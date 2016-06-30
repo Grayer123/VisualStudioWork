@@ -1,0 +1,2 @@
+# VisualStudioWork
+MVC, EntityFramework; CodeFirst
