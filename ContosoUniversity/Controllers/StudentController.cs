@@ -8,6 +8,8 @@ using System.Web;
 using System.Web.Mvc;
 using ContosoUniversity.DAL;
 using ContosoUniversity.Models;
+using PagedList;
+using System.Data.Entity.Infrastructure;
 
 namespace ContosoUniversity.Controllers
 {
@@ -16,10 +18,77 @@ namespace ContosoUniversity.Controllers
         private SchoolContext db = new SchoolContext();
 
         // GET: Student
-        public ActionResult Index()
-        {
-            return View(db.Students.ToList());
+        //public ActionResult Index()
+        //{
+        //    return View(db.Students.ToList());
+        //}
+
+        //public ViewResult Index(string sortOrder, string searchString) {
+        //    ViewBag.NameSortParm = String.IsNullOrEmpty(sortOrder) ? "name_desc" : "";
+        //    ViewBag.DateSortParm = sortOrder == "Date" ? "date_desc" : "Date";
+        //    //var students = from s in db.Students
+        //    //               select s;
+        //    var students = db.Students.AsQueryable();
+        //    if (!String.IsNullOrEmpty(searchString)) {
+        //        students = students.Where(
+        //                                s => s.LastName.ToUpper().Contains(searchString.ToUpper()) || 
+        //                                    s.FirstMidName.ToUpper().Contains(searchString.ToUpper()));
+        //    }
+        //    switch (sortOrder) {
+        //        case "name_desc":
+        //            students = students.OrderByDescending(s => s.LastName);
+        //            break;
+        //        case "Date":
+        //            students = students.OrderBy(s => s.EnrollmentDate);
+        //            break;
+        //        case "date_desc":
+        //            students = students.OrderByDescending(s => s.EnrollmentDate);
+        //            break;
+        //        default:
+        //            students = students.OrderBy(s => s.LastName);
+        //            break;
+        //    }
+        //    return View(students.ToList());
+        //}
+
+        // GET: Student
+        public ViewResult Index(string sortOrder, string currentFilter, string searchString, int? page) {
+            ViewBag.CurrentSort = sortOrder;
+            ViewBag.NameSortParm = String.IsNullOrEmpty(sortOrder) ? "name_desc" : "";
+            ViewBag.DateSortParm = sortOrder == "Date" ? "date_desc" : "Date";
+            if (searchString != null) {
+                page = 1;
+            }
+            else {
+                searchString = currentFilter;
+            }
+            ViewBag.CurrentFilter = searchString;
+            //var students = from s in db.Students
+            //               select s;
+            var students = db.Students.AsQueryable();
+            if (!String.IsNullOrEmpty(searchString)) {
+                students = students.Where(s => s.LastName.ToUpper().Contains(searchString.ToUpper())
+                || s.FirstMidName.ToUpper().Contains(searchString.ToUpper()));
+            }
+            switch (sortOrder) {
+                case "name_desc":
+                    students = students.OrderByDescending(s => s.LastName);
+                    break;
+                case "Date":
+                    students = students.OrderBy(s => s.EnrollmentDate);
+                    break;
+                case "date_desc":
+                    students = students.OrderByDescending(s => s.EnrollmentDate);
+                    break;
+                default: // Name ascending
+                    students = students.OrderBy(s => s.LastName);
+                    break;
+            }
+            int pageSize = 3;
+            int pageNumber = (page ?? 1);
+            return View(students.ToPagedList(pageNumber, pageSize));
         }
+
 
         // GET: Student/Details/5
         public ActionResult Details(int? id)
@@ -49,11 +118,20 @@ namespace ContosoUniversity.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult Create([Bind(Include = "ID,LastName,FirstMidName,EnrollmentDate")] Student student)
         {
-            if (ModelState.IsValid)
-            {
-                db.Students.Add(student);
-                db.SaveChanges();
-                return RedirectToAction("Index");
+            try {
+                if (ModelState.IsValid) {
+                    db.Students.Add(student);
+                    db.SaveChanges();
+                    return RedirectToAction("Index");
+                }
+            }
+            //catch (DataException /* dex */) {
+            //    //Log the error (uncomment dex variable name and add a line here to write a log.
+            //    ModelState.AddModelError("", "Unable to save changes. Try again, and if the problem persists see your system administrator.");
+            //}
+            catch (RetryLimitExceededException /* dex */) {
+                //Log the error (uncomment dex variable name and add a line here to write a log.
+                ModelState.AddModelError("", "Unable to save changes. Try again, and if the problem persists see your system administrator.");
             }
 
             return View(student);
@@ -79,40 +157,61 @@ namespace ContosoUniversity.Controllers
         // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult Edit([Bind(Include = "ID,LastName,FirstMidName,EnrollmentDate")] Student student)
-        {
-            if (ModelState.IsValid)
-            {
-                db.Entry(student).State = EntityState.Modified;
-                db.SaveChanges();
-                return RedirectToAction("Index");
+        public ActionResult Edit([Bind(Include = "ID, LastName, FirstMidName, EnrollmentDate")]Student student) {
+            try {
+                if (ModelState.IsValid) {
+                    db.Entry(student).State = EntityState.Modified;
+                    db.SaveChanges();
+                    return RedirectToAction("Index");
+                }
+            }
+            //catch (DataException /* dex */) {
+            //    //Log the error (uncomment dex variable name and add a line here to write a log.
+            //    ModelState.AddModelError("", "Unable to save changes. Try again, and if the problem persists see your system administrator.");
+            //}
+            catch (RetryLimitExceededException /* dex */) {
+                //Log the error (uncomment dex variable name and add a line here to write a log.
+                ModelState.AddModelError("", "Unable to save changes. Try again, and if the problem persists see your system administrator.");
             }
             return View(student);
         }
 
         // GET: Student/Delete/5
-        public ActionResult Delete(int? id)
-        {
-            if (id == null)
-            {
+        public ActionResult Delete(int? id, bool? saveChangesError = false) {
+            if (id == null) {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
+            if (saveChangesError.GetValueOrDefault()) {
+                ViewBag.ErrorMessage = "Delete failed. Try again, and if the problem persists see your system administrator.";
+            }
             Student student = db.Students.Find(id);
-            if (student == null)
-            {
+            if (student == null) {
                 return HttpNotFound();
             }
             return View(student);
         }
 
         // POST: Student/Delete/5
-        [HttpPost, ActionName("Delete")]
+        [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult DeleteConfirmed(int id)
-        {
-            Student student = db.Students.Find(id);
-            db.Students.Remove(student);
-            db.SaveChanges();
+        public ActionResult Delete(int id) {
+            try {
+                Student student = db.Students.Find(id);
+                db.Students.Remove(student);
+                //alternative way to Find and Remove
+                //Student studentToDelete = new Student() { ID = id };
+                //db.Entry(studentToDelete).State = EntityState.Deleted;
+
+                db.SaveChanges();
+            }
+            //catch (DataException/* dex */) {
+            //    //Log the error (uncomment dex variable name and add a line here to write a log.
+            //    return RedirectToAction("Delete", new { id = id, saveChangesError = true });
+            //}
+            catch (RetryLimitExceededException /* dex */) {
+                //Log the error (uncomment dex variable name and add a line here to write a log.
+                ModelState.AddModelError("", "Unable to save changes. Try again, and if the problem persists see your system administrator.");
+            }
             return RedirectToAction("Index");
         }
 
